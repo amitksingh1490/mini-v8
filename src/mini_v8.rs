@@ -340,9 +340,20 @@ impl Interface {
         let mut top_mut = top.borrow_mut();
         func(&mut top_mut)
     }
+
+    pub fn get_handle_scope(&self) -> *mut v8::HandleScope<'static> {
+        self.top(|entry| match entry {
+            InterfaceEntry::Isolate(isolate) => {
+                let scope = &mut v8::HandleScope::new(isolate);
+                let ptr = scope;
+                unsafe { std::mem::transmute(ptr) }
+            },
+            InterfaceEntry::HandleScope(ptr) => *ptr,
+        })
+    }
 }
 
-enum InterfaceEntry {
+pub enum InterfaceEntry {
     Isolate(v8::OwnedIsolate),
     HandleScope(*mut v8::HandleScope<'static>),
 }
