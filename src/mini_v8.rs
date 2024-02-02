@@ -10,7 +10,7 @@ use std::time::Duration;
 
 #[derive(Clone)]
 pub struct MiniV8 {
-    interface: Interface,
+    pub interface: Interface,
 }
 
 impl MiniV8 {
@@ -258,7 +258,7 @@ impl MiniV8 {
 
     // Opens a new handle scope in the global context. Nesting calls to this or `MiniV8::try_catch`
     // will cause a panic (unless a callback is entered, see `MiniV8::create_function`).
-    pub(crate) fn scope<F, T>(&self, func: F) -> T
+    pub fn scope<F, T>(&self, func: F) -> T
     where
         F: FnOnce(&mut v8::ContextScope<v8::HandleScope>) -> T,
     {
@@ -267,14 +267,14 @@ impl MiniV8 {
 
     // Opens a new try-catch scope in the global context. Nesting calls to this or `MiniV8::scope`
     // will cause a panic (unless a callback is entered, see `MiniV8::create_function`).
-    pub(crate) fn try_catch<F, T>(&self, func: F) -> T
+    pub fn try_catch<F, T>(&self, func: F) -> T
     where
         F: FnOnce(&mut v8::TryCatch<v8::HandleScope>) -> T,
     {
         self.interface.try_catch(func)
     }
 
-    pub(crate) fn exception(&self, scope: &mut v8::TryCatch<v8::HandleScope>) -> Result<()> {
+    pub fn exception(&self, scope: &mut v8::TryCatch<v8::HandleScope>) -> Result<()> {
         if scope.has_terminated() {
             Err(Error::Timeout)
         } else if let Some(exception) = scope.exception() {
@@ -286,19 +286,19 @@ impl MiniV8 {
 }
 
 #[derive(Clone)]
-struct Interface(Rc<RefCell<Vec<Rc<RefCell<InterfaceEntry>>>>>);
+pub struct Interface(Rc<RefCell<Vec<Rc<RefCell<InterfaceEntry>>>>>);
 
 impl Interface {
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.borrow().len()
     }
 
-    fn isolate_handle(&self) -> v8::IsolateHandle {
+    pub fn isolate_handle(&self) -> v8::IsolateHandle {
         self.top(|entry| entry.isolate_handle())
     }
 
     // Opens a new handle scope in the global context.
-    fn scope<F, T>(&self, func: F) -> T
+    pub fn scope<F, T>(&self, func: F) -> T
     where
         F: FnOnce(&mut v8::ContextScope<v8::HandleScope>) -> T,
     {
@@ -306,33 +306,33 @@ impl Interface {
     }
 
     // Opens a new try-catch scope in the global context.
-    fn try_catch<F, T>(&self, func: F) -> T
+    pub fn try_catch<F, T>(&self, func: F) -> T
     where
         F: FnOnce(&mut v8::TryCatch<v8::HandleScope>) -> T,
     {
         self.scope(|scope| func(&mut v8::TryCatch::new(scope)))
     }
 
-    fn new(isolate: v8::OwnedIsolate) -> Interface {
+    pub fn new(isolate: v8::OwnedIsolate) -> Interface {
         Interface(Rc::new(RefCell::new(vec![Rc::new(RefCell::new(InterfaceEntry::Isolate(isolate)))])))
     }
 
-    fn push(&self, handle_scope: *mut v8::HandleScope<'static>) {
+    pub fn push(&self, handle_scope: *mut v8::HandleScope<'static>) {
         self.0.borrow_mut().push(Rc::new(RefCell::new(InterfaceEntry::HandleScope(handle_scope))));
     }
 
-    fn pop(&self) {
+    pub fn pop(&self) {
         self.0.borrow_mut().pop();
     }
 
-    fn use_slot<F, T: 'static, U>(&self, func: F) -> U
+    pub fn use_slot<F, T: 'static, U>(&self, func: F) -> U
     where
         F: FnOnce(&T) -> U,
     {
         self.top(|entry| func(entry.get_slot()))
     }
 
-    fn top<F, T>(&self, func: F) -> T
+    pub fn top<F, T>(&self, func: F) -> T
     where
         F: FnOnce(&mut InterfaceEntry) -> T,
     {
@@ -348,7 +348,7 @@ enum InterfaceEntry {
 }
 
 impl InterfaceEntry {
-    fn scope<F, T>(&mut self, func: F) -> T
+    pub fn scope<F, T>(&mut self, func: F) -> T
     where
         F: FnOnce(&mut v8::ContextScope<v8::HandleScope>) -> T,
     {
@@ -368,7 +368,7 @@ impl InterfaceEntry {
         }
     }
 
-    fn get_slot<T: 'static>(&self) -> &T {
+    pub fn get_slot<T: 'static>(&self) -> &T {
         match self {
             InterfaceEntry::Isolate(isolate) => isolate.get_slot::<T>().unwrap(),
             InterfaceEntry::HandleScope(ref ptr) => {
@@ -378,7 +378,7 @@ impl InterfaceEntry {
         }
     }
 
-    fn isolate_handle(&self) -> v8::IsolateHandle {
+    pub fn isolate_handle(&self) -> v8::IsolateHandle {
         match self {
             InterfaceEntry::Isolate(isolate) => isolate.thread_safe_handle(),
             InterfaceEntry::HandleScope(ref ptr) => {
@@ -395,7 +395,7 @@ struct Global {
 
 static INIT: Once = Once::new();
 
-fn initialize_v8() {
+ pub fn initialize_v8() {
     INIT.call_once(|| {
         let platform = v8::new_default_platform(0, false).make_shared();
         v8::V8::initialize_platform(platform);
@@ -403,7 +403,7 @@ fn initialize_v8() {
     });
 }
 
-fn initialize_slots(isolate: &mut v8::Isolate) {
+pub fn initialize_slots(isolate: &mut v8::Isolate) {
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope);
     let scope = &mut v8::ContextScope::new(scope, context);
@@ -412,11 +412,11 @@ fn initialize_slots(isolate: &mut v8::Isolate) {
     scope.set_slot(AnyMap(Rc::new(RefCell::new(BTreeMap::new()))));
 }
 
-fn create_string<'s>(scope: &mut v8::HandleScope<'s>, value: &str) -> v8::Local<'s, v8::String> {
+pub fn create_string<'s>(scope: &mut v8::HandleScope<'s>, value: &str) -> v8::Local<'s, v8::String> {
     v8::String::new(scope, value).expect("string exceeds maximum length")
 }
 
-fn add_finalizer<T: 'static>(
+pub fn add_finalizer<T: 'static>(
     isolate: &mut v8::Isolate,
     handle: impl v8::Handle<Data = T>,
     finalizer: impl FnOnce() + 'static,
